@@ -1,15 +1,21 @@
 # An application of item response theory for agricultural sustainability measurement
-## Sample code and data
 
-This repository provides the code and sample data needed to test the proposed method for generating an agricultural sustainability index using item response theory. A working version of the manuscript can be found at SSRN [here](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4457489). The files required to run the model are as follows:
+This repository contains the code and supplementary materials necessary to replicate the Item Response Theory (IRT) model used for generating an agricultural sustainability index.
 
-- ```supplementary_materials.pdf``` is an amendment to the manuscript that contains a literature review of indicators for agricultural sustainability indices, as well as descriptions and the calculations used to generate all items for the index. The STATA code used to generate the items described in this document can be found [here](https://github.com/brianbeadle/sustainability_index), but would require access to farm-level FADN data 
-- ```(filename)``` contains the sample data for the index. The data are in longitudinal format and contain the following variables:
-  - ```id``` is a randomly generated farm id
-  - ```item``` is a categorical variable denoting the item number (item descriptions and calculations are provided in the supplementary materials)
-  - ```y``` is the observed response
-  - ```TF8``` denotes the type of farm (see supplementary materials or FADN documentation for definitions)
-  - ```A26``` identifies the economic size class of the farm (see supplementary materials or FADN documentation for definitions)
-- ```200-IRM-cs-2013-priors.Rmd``` is the R code used to generate the agricultural sustainability index using the ```brms``` package
-- ```200-IRM-cs-2013-priors-experiements.Rmd``` is a test model removing the priors in the previous model
-- ```170-asi-results-cs.do``` contains the STATA code used to generate robustness tests and visuals used in the paper 
+## List of replication files and description of each:
+
+- The Farm Accountancy Data Network (FADN) data used in this study are officially available only to registered users. For complete documentation and conditions of access, please refer to [this link](https://agriculture.ec.europa.eu/data-and-analysis/farm-structures-and-economics/fadn_en). Given access to the original FADN files, the dataset can be replicated using the supplementary information provided in the file `01-supplementary_materials.pdf` within this repository. This supplementary document is an amendment to the manuscript and includes a literature review of indicators for agricultural sustainability indices, as well as detailed descriptions and calculations used to generate all items for the index.
+- Data dictionary for the FADN data set:
+
+| Variable | Description                                                                                                                    |
+|:---------|:-------------------------------------------------------------------------------------------------------------------------------|
+| `id`     | randomly generated farm id                                                                                                     |
+| `item`   | categorical variable denoting the item number (item descriptions and calculations are provided in the supplementary materials) |
+| `y`      | observed response                                                                                                              |
+| `TF8`    | type of farm (see supplementary materials or FADN documentation for definitions)                                               |
+| `A26`    | economic size class of the farm (see supplementary materials or FADN documentation for definitions)                            |
+| `NUTS2`  | indicator for region (NUTS-2 regions)                                                                                          |
+
+- The R Markdown file `02-IRT-models-estimations.Rmd` contains the code for estimating the IRT models used in the paper. It generates the results presented in Figures 2 through 4.
+- The HTML file `02-IRT-models-estimations.html` displays the output of the knitted R Markdown file, including both the results and the R code, in an HTML format.
+

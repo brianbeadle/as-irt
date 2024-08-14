@@ -1,0 +1,308 @@
+---
+title: |
+  | An application of item response theory for agricultural sustainability measurement
+  |
+  | Estimation results
+output:
+  html_document:
+    fig_caption: yes
+    theme: spacelab
+    highlight: pygments
+    toc: yes
+    toc_depth: 4
+    number_sections: yes
+    toc_float:
+      smooth_scroll: no
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(comment=NA, message=FALSE, warning=FALSE)
+rm(list=ls())
+library(tidyverse)
+library(haven)
+library(brms)
+library(bayesplot)
+library(ggplot2)
+theme_set(theme_bw())
+```
+
+# Data
+
+The Farm Accountancy Data Network (FADN) data used in this study are available officially only to registered users. For a full documentation and the conditions of access, see https://agriculture.ec.europa.eu/data-and-analysis/farm-structures-and-economics/fadn_en
+
+Given access to the FADN original files, the data set can be
+replicated using the supplementary information provided in this repository. 
+
+```{r}
+d <- read_dta("fadn-2013.dta")
+d <- rename(d, id = idn)
+d$id <- as.integer(d$id)
+d$item <- as.factor(d$item)
+table(d$item)
+```
+
+
+```{r}
+d$y <- factor( d$y, levels = c("0", "1", "2", "3"), ordered = TRUE ) 
+glimpse(d, width = 60)
+table(d$y)
+```
+
+```{r}
+summary(d)
+```
+
+# Baseline IRT model 
+
+## Fitting 
+
+```{r}
+prior <-
+  # discrimination
+  prior("normal(0, 2)", class = "Intercept", dpar = "disc") + 
+  prior("normal(0, 2)", class = "sd", group = "item", dpar = "disc") + 
+  # unit-specific effects 
+  prior("constant(1)", class = "sd", group = "id") +
+  # item-specific effects 
+  prior("normal(0, 2)", class = "sd", coef = "Intercept", group = "item") 
+formula <- brmsformula(
+  y ~ 1 +  (1|i|item) + (1|id),
+  disc ~ 1 + (1|i|item)
+)
+fit1 <- brm( 
+  formula = formula,
+  data = d,
+  family = cumulative(link = "logit"),
+  prior = prior,
+  cores = 4,
+  iter = 1000,
+  warmup = 500,
+  refresh = 0,
+  file = "results/01-baseline-IRT.rds"
+)
+```
+
+```{r}
+summary(fit1)
+```
+
+```{r}
+prior_summary(fit1)
+```
+
+## Easiness and discrimination parameters (Figure 1)
+
+This code replicates Figure 1 in the paper.
+
+```{r}
+# extract item and easiness parameters
+ranef1 <- ranef(fit1)
+# discriminations
+alpha <- ranef1$item[, , "disc_Intercept"] %>%
+  exp() %>% 
+	as_tibble() %>%
+	rownames_to_column()
+# item easinesses (deviations from thresholds)
+beta <- ranef1$item[, , "Intercept"] %>%
+	as_tibble() %>%
+	rownames_to_column()
+# put easinesses and discriminations together
+bind_rows(beta, alpha, .id = "nlpar") %>%
+	rename(item = "rowname") %>%
+	mutate(item = as.numeric(item)) %>%
+	mutate(nlpar = factor(nlpar, labels = c("Easiness", "Discrimination"))) %>%
+	ggplot(aes(item, Estimate, ymin = Q2.5, ymax = Q97.5)) +
+	facet_wrap("nlpar", scales = "free_x") +
+	geom_pointrange() +
+	coord_flip() +
+	labs(x = "Item Number") + 
+  scale_x_discrete( limits=1:9 )
+```
+
+## Extract sustainability index (farm parameters)
+
+```{r}
+df.re <- ranef(fit1) 
+dim(df.re$id) # dimension: no of units X no sum. stats X no. of parameters
+df.re <- data.frame( asi = df.re$id[,1,] ) # extract mean
+dim(df.re)
+# convert row names into first column
+df.re <- tibble::rownames_to_column(df.re, "id")
+head(df.re)
+```
+
+
+Save sustainability indicator:
+
+```{r}
+nrow(df.re) # number of AS values: one value for each farm in each year 
+# write.csv(df.re, file = "asi-index.csv")
+```
+
+
+# Modeling covariates: farm type classification (TF8)
+
+## Fitting 
+
+Create factor variables for use in the regression:
+
+```{r}
+d$ftype <- ifelse( d$TF8 == 1, 1,
+                   ifelse( d$TF8 == 2, 2, 
+                   ifelse( d$TF8 == 3, 3, 
+                   ifelse( d$TF8 == 4, 4, 
+                   ifelse( d$TF8 == 5, 5, 
+                   ifelse( d$TF8 == 6, 6, 
+                   ifelse( d$TF8 == 7, 7, 
+                   ifelse( d$TF8 == 8, 8, NA))))))))
+d$ftype <- factor(d$ftype,
+                  levels = c(1,2,3,4,5,6,7,8),
+                  labels = c("Fieldcrops", "Horticulture", "Wine", "Other permanent crops", 
+                             "Milk", "Other grazing livestock", "Granivores", "Mixed"))
+```
+
+```{r}
+prior <-
+  # discrimination
+  prior("normal(0, 2)", class = "Intercept", dpar = "disc") + 
+  prior("normal(0, 2)", class = "sd", group = "item", dpar = "disc") +
+  # unit-specific effects 
+  prior("constant(1)", class = "sd", group = "id") +
+  # item-specific effects 
+  prior("normal(0, 2)", class = "sd", coef = "Intercept", group = "item") +
+  # covariate effects 
+  prior("normal(0, 2)", class = "b") 
+formula <- brmsformula(
+  y ~ 1 + ftype + (1|i|item) + (1|id),
+  disc ~ 1 + (1|i|item)
+)
+fit1 <- brm( 
+  formula = formula,
+  data = d,
+  family = cumulative(link = "logit"),
+  prior = prior,
+  cores = 4,
+  iter = 1000,
+  warmup = 500,
+  refresh = 0,
+  file = "results/02-farm-type.rds"
+)
+```
+
+```{r}
+summary(fit1)
+```
+
+```{r}
+prior_summary(fit1)
+```
+
+## Predicted probabilities (Figure 2)
+
+```{r}
+foo <- conditional_effects( fit1, categorical = TRUE, prob = 0.8 )
+plot(foo, plot = FALSE)[[1]] + 
+  scale_x_discrete(name ="") +
+  coord_flip() +
+  theme_bw()
+```
+
+# Modeling covariates: economic class size
+
+## Fitting
+
+```{r}
+prior <-
+  # discrimination
+  prior("normal(0, 2)", class = "Intercept", dpar = "disc") + 
+  prior("normal(0, 2)", class = "sd", group = "item", dpar = "disc") +
+  # unit-specific effects 
+  prior("constant(1)", class = "sd", group = "id") +
+  # item-specific effects 
+  prior("normal(0, 2)", class = "sd", coef = "Intercept", group = "item") +
+  # covariate effects 
+  prior("normal(0, 2)", class = "b") 
+formula <- brmsformula(
+  y ~ 1 + size + (1|i|item) + (1|id),
+  disc ~ 1 + (1|i|item)
+)
+fit1 <- brm( 
+  formula = formula,
+  data = d,
+  family = cumulative(link = "logit"),
+  prior = prior,
+  cores = 4,
+  iter = 1000,
+  warmup = 500,
+  refresh = 100,
+  file = "results/03-size.rds"
+)
+```
+
+```{r}
+summary(fit1)
+```
+
+## Predicted probabilities (Figure 3)
+
+```{r}
+foo <- conditional_effects( fit1, categorical = TRUE, prob = 0.8 )
+plot(foo, plot = FALSE)[[1]] + 
+  scale_x_discrete(name ="") +
+  coord_flip() +
+  theme_bw()
+```
+
+# Modeling covariates: regions
+
+## Fitting
+
+```{r}
+prior <-
+  # discrimination
+  prior("normal(0, 2)", class = "Intercept", dpar = "disc") +
+  prior("normal(0, 2)", class = "sd", group = "item", dpar = "disc") +
+  # unit-specific effects 
+  prior("constant(1)", class = "sd", group = "id") +
+  # item-specific effects 
+  prior("normal(0, 2)", class = "sd", coef = "Intercept", group = "item") +
+  # covariate effects 
+  prior("normal(0, 2)", class = "b") 
+formula <- brmsformula(
+  y ~ 1 + NUTS2 + (1|i|item) + (1|id),
+  disc ~ 1 + (1|i|item)
+)
+fit1 <- brm( 
+  formula = formula,
+  data = d,
+  family = cumulative(link = "logit"),
+  prior = prior,
+  cores = 4,
+  iter = 1000,
+  warmup = 500,
+  refresh = 0,
+  file = "results/04-region.rds"
+)
+```
+
+```{r}
+summary(fit1)
+```
+
+```{r}
+prior_summary(fit1)
+```
+
+## Predicted probabilities (Figure 4)
+
+```{r}
+newx <- data.frame( NUTS2 = unique(d$NUTS2) )
+pp <- fitted(fit1, newdata = newx, re_formula = NA, probs = c(0.10, 0.90))
+pp4 <- pp[,,"P(Y = very sustainable)"]
+print(pp4)
+```
+
+
+```{r}
+knitr::knit_exit()
+```
